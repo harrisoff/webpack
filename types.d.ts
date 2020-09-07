@@ -262,12 +262,15 @@ declare abstract class AsyncDependenciesBlock extends DependenciesBlock {
 		preloadOrder?: number;
 		prefetchOrder?: number;
 		name?: string;
+		entryOptions?: { name: string } & Pick<
+			EntryDescriptionNormalized,
+			"filename" | "chunkLoading" | "dependOn" | "library" | "runtime"
+		>;
 	};
 	loc: SyntheticDependencyLocation | RealDependencyLocation;
 	request: string;
 	parent: DependenciesBlock;
 	chunkName: string;
-	isAsync(parentChunkGroup: ChunkGroup): boolean;
 	module: any;
 }
 declare abstract class AsyncQueue<T, K, R> {
@@ -617,6 +620,10 @@ declare class Chunk {
 	hasRuntime(): boolean;
 	canBeInitial(): boolean;
 	isOnlyInitial(): boolean;
+	getEntryOptions(): { name: string } & Pick<
+		EntryDescriptionNormalized,
+		"filename" | "chunkLoading" | "dependOn" | "library" | "runtime"
+	>;
 	addGroup(chunkGroup: ChunkGroup): void;
 	removeGroup(chunkGroup: ChunkGroup): void;
 	isInGroup(chunkGroup: ChunkGroup): boolean;
@@ -628,6 +635,7 @@ declare class Chunk {
 	getAllAsyncChunks(): Set<Chunk>;
 	getAllInitialChunks(): Set<Chunk>;
 	getAllReferencedChunks(): Set<Chunk>;
+	getAllReferencedAsyncEntrypoints(): Set<Entrypoint>;
 	hasAsyncChunks(): boolean;
 	getChildIdsByOrders(
 		chunkGraph: ChunkGraph,
@@ -848,6 +856,8 @@ declare abstract class ChunkGroup {
 	hasParent(parent: ChunkGroup): boolean;
 	readonly parentsIterable: SortableSet<ChunkGroup>;
 	removeParent(chunkGroup: ChunkGroup): boolean;
+	addAsyncEntrypoint(entrypoint: Entrypoint): boolean;
+	readonly asyncEntrypointsIterable: SortableSet<ChunkGroup>;
 	getBlocks(): any[];
 	getNumberOfBlocks(): number;
 	hasBlock(block?: any): boolean;
@@ -1227,6 +1237,7 @@ declare class Compilation {
 	entries: Map<string, EntryData>;
 	globalEntry: EntryData;
 	entrypoints: Map<string, Entrypoint>;
+	asyncEntrypoints: Entrypoint[];
 	chunks: Set<Chunk>;
 	chunkGroups: ChunkGroup[];
 	namedChunkGroups: Map<string, ChunkGroup>;
@@ -1333,7 +1344,7 @@ declare class Compilation {
 		blocks: DependenciesBlock[]
 	): void;
 	codeGeneration(callback?: any): void;
-	processRuntimeRequirements(entrypoints: Iterable<Entrypoint>): void;
+	processRuntimeRequirements(): void;
 	addRuntimeModule(chunk: Chunk, module: RuntimeModule): void;
 	addChunkInGroup(
 		groupOptions:
@@ -1343,6 +1354,15 @@ declare class Compilation {
 		loc: SyntheticDependencyLocation | RealDependencyLocation,
 		request: string
 	): ChunkGroup;
+	addAsyncEntrypoint(
+		options: { name: string } & Pick<
+			EntryDescriptionNormalized,
+			"filename" | "chunkLoading" | "dependOn" | "library" | "runtime"
+		>,
+		module: Module,
+		loc: SyntheticDependencyLocation | RealDependencyLocation,
+		request: string
+	): Entrypoint;
 
 	/**
 	 * This method first looks to see if a name is provided for a new chunk,
@@ -3624,7 +3644,7 @@ declare class JavascriptParser extends Parser {
 			>
 		>;
 		optionalChaining: SyncBailHook<[ChainExpression], boolean | void>;
-		new: HookMap<SyncBailHook<[Expression], boolean | void>>;
+		new: HookMap<SyncBailHook<[NewExpression], boolean | void>>;
 		expression: HookMap<SyncBailHook<[Expression], boolean | void>>;
 		expressionMemberChain: HookMap<
 			SyncBailHook<[Expression, string[]], boolean | void>
@@ -5781,6 +5801,11 @@ declare interface Output {
 	 * The filename of WebAssembly modules as relative path inside the `output.path` directory.
 	 */
 	webassemblyModuleFilename?: string;
+
+	/**
+	 * The method of loading chunks (methods included by default are 'jsonp' (web), 'importScripts' (WebWorker), 'require' (sync node.js), 'async-node' (async node.js), but others might be added by plugins).
+	 */
+	workerChunkLoading?: DevTool;
 }
 declare interface OutputFileSystem {
 	writeFile: (
@@ -5990,6 +6015,11 @@ declare interface OutputNormalized {
 	 * The filename of WebAssembly modules as relative path inside the `output.path` directory.
 	 */
 	webassemblyModuleFilename?: string;
+
+	/**
+	 * The method of loading chunks (methods included by default are 'jsonp' (web), 'importScripts' (WebWorker), 'require' (sync node.js), 'async-node' (async node.js), but others might be added by plugins).
+	 */
+	workerChunkLoading?: DevTool;
 }
 declare interface ParsedIdentifier {
 	request: string;
